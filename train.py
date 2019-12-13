@@ -1,7 +1,9 @@
 #Implement transfer learning to identify disease presence in corn
-import os, time, keras
+import os, time
+import tensorflow.keras as keras
 import numpy  as np
 import pandas as pd
+import tensorflow as tf
 from os import listdir
 from matplotlib import axes
 from matplotlib import pyplot as plt
@@ -13,23 +15,22 @@ from keras.applications import ResNet50
 from keras.models import Model, load_model
 from keras.optimizers import RMSprop, Adam
 from keras.preprocessing.image import load_img, img_to_array
-import tensorflow as tf
 from tensorflow.keras.callbacks  import TensorBoard, ModelCheckpoint, EarlyStopping
 
-dim = 192
+dim = 256
 epochs = 200
-batch_size = 1
+batch_size = 4
 model_dir = './model/'
 model_name = 'corn_model'
 model_path = model_dir+model_name+'.h5' #save model to
 
 load_images         = True #***
-load_existing_model = True
-train_model         = False
-graph_results       = False
+load_existing_model = False
+train_model         = True
+graph_results       = True
 evaluate            = True
-save_pb             = False
-create_tflite       = False
+save_pb             = True
+create_tflite       = True
 #--------------- Load images ---------------
 if load_images:
   print('Loading Images...')
@@ -89,12 +90,12 @@ print('Output shape:', pretrained.output_shape)
 #--------------- Train Model ---------------
 if train_model:
   # ckpt = ModelCheckpoint(model_dir + 'best_model.h5', monitor='val_loss', verbose=0, save_weights_only=True, save_best_only=True)
-  # es = EarlyStopping(monitor='val_loss', min_delta=0, patience=8, verbose=0, mode='auto', baseline=None, restore_best_weights=True)
+  es = EarlyStopping(monitor='val_acc', min_delta=0, patience=25, verbose=0, mode='auto', baseline=0.85, restore_best_weights=True)
   pretrained_history = pretrained.fit(
     images_train,
     classes_train,
     verbose=1, 
-    callbacks=[],
+    callbacks=[es],
     epochs=epochs,
     batch_size=batch_size, 
     validation_data=(images_valid, classes_valid)
@@ -161,8 +162,9 @@ if save_pb:
   # Save to .pb
   tf.train.write_graph(frozen_graph, model_dir, model_name+'.pb', as_text=False)
 
+#--------------- Convert to tflite model ---------------
 if create_tflite:
   print('Saving tflite...')
-  converter = tf.lite.TFLiteConverter.from_keras_model(pretrained)
+  converter = tf.lite.TFLiteConverter.from_keras_model_file(model_path)
   tflite_model = converter.convert()
   open(f'{model_dir}{model_name}.tflite', 'wb').write(tflite_model)

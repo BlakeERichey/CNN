@@ -19,7 +19,7 @@ def get_images(path='./images/', dims=(256, 256)):
     dims: (y,x)
   '''
   images = []
-  files = sorted([im for im in os.listdir(path) if (im[-3:] in ['jpg', 'png'])])
+  files = [im for im in os.listdir(path) if (im[-3:] in ['jpg', 'png'])]
   for filename in files:
     image = load_img(path+filename, target_size=dims)
     numpy_image = img_to_array(image)
@@ -37,13 +37,13 @@ pretrained.summary()
 
 #--------------- Load images ---------------
 paths = ['tests/corn/healthy', 'tests/corn/nlblight']
-dim = 192
+dim = 256
 images = []
 classes = []
 for i, p in enumerate(paths):
   images_batch, num_images = get_images(path=f'./images/{p}/', dims=(dim, dim))
   images += images_batch
-  classes += [i for _ in range(num_images)]
+  classes += [i for _ in range(num_images)] #class = directory number in paths
 
 #map images and classes to a NN input and output
 images = np.array(images)
@@ -51,7 +51,12 @@ classes = to_categorical(classes)
 
 print('Image shape', images[0].shape)
 
-for image in images:
-  print(pretrained.predict(np.expand_dims(image, axis=0)))
+for i, image in enumerate(images):
+  pred = pretrained.predict(np.expand_dims(image, axis=0))
+  print(
+        'Correct:', np.argmax(pred) == np.argmax(classes[i]), ' | ',
+        'Actual:', np.argmax(classes[i]), ' | ',
+        'Predicted:', np.round(pred, 5), ' | ',
+      )
 
 plt.imshow(np.uint8(images[0])) #render image
