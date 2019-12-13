@@ -1,112 +1,125 @@
 #Implement transfer learning to identify disease presence in corn
-import os
-import keras
-import numpy as np
+import os, time, keras
+import numpy  as np
 import pandas as pd
 from os import listdir
-from matplotlib import pyplot as plt
 from matplotlib import axes
+from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split
-from keras.optimizers import RMSprop
-from keras.applications import ResNet50
-from keras.datasets import cifar10
-from keras.models import Model
+from sklearn.metrics         import confusion_matrix
 from keras import layers
-from tensorflow.keras.callbacks  import TensorBoard, ModelCheckpoint, EarlyStopping
-from keras.preprocessing.image import load_img
-from keras.preprocessing.image import img_to_array
 from keras.utils import to_categorical
+from keras.applications import ResNet50
+from keras.models import Model, load_model
+from keras.optimizers import RMSprop, Adam
+from keras.preprocessing.image import load_img, img_to_array
+import tensorflow as tf
+from tensorflow.keras.callbacks  import TensorBoard, ModelCheckpoint, EarlyStopping
 
 dim = 192
-epochs = 30
-batch_size = 8
+epochs = 200
+batch_size = 1
+model_dir = './model/'
+model_name = 'corn_model'
+model_path = model_dir+model_name+'.h5' #save model to
+
+load_images         = True #***
+load_existing_model = True
+train_model         = False
+graph_results       = False
+evaluate            = True
+save_pb             = False
+create_tflite       = False
 #--------------- Load images ---------------
-def get_images(path='./images/', dims=(256, 256)):
-  '''
-    dims: (y,x)
-  '''
+if load_images:
+  print('Loading Images...')
+  def get_images(path='./images/', dims=(256, 256)):
+    '''
+      dims: (y,x)
+    '''
+    images = []
+    files = [im for im in os.listdir(path) if (im[-3:] in ['jpg', 'png'])]
+    for filename in files:
+      image = load_img(path+filename, target_size=dims)
+      numpy_image = img_to_array(image)
+      images.append(numpy_image)
+
+    return images, len(images)
+
+  #get images
+  paths = ['healthy_corn', 'nl_blight']
   images = []
-  files = [im for im in os.listdir(path) if (im[-3:] in ['jpg', 'png'])]
-  for filename in files:
-    image = load_img(path+filename, target_size=dims)
-    numpy_image = img_to_array(image)
-    images.append(numpy_image)
+  classes = []
+  for i, p in enumerate(paths):
+    images_batch, num_images = get_images(path=f'./images/{p}/', dims=(dim, dim))
+    images += images_batch
+    classes += [i for _ in range(num_images)]
 
-  return images, len(images)
+  #map images and classes to a NN input and output
+  images = np.array(images)
+  classes = to_categorical(classes)
 
-#get images
-paths = ['coke', 'nacho', 'wb']
-images = []
-classes = []
-for i, p in enumerate(paths):
-  images_batch, num_images = get_images(path=f'./images/{p}/', dims=(dim, dim))
-  images += images_batch
-  classes += [i for _ in range(num_images)]
-
-#map images and classes to a NN input and output
-images = np.array(images)
-classes = to_categorical(classes)
-
-#shuffle and split
-images, images_valid, classes, classes_valid = train_test_split(images, classes, test_size=.15)
+  #shuffle and split
+  images_train, images_valid, classes_train, classes_valid = train_test_split(images, classes, test_size=.15)
 
 #--------------- Build NN ---------------
-pretrained = ResNet50(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
-#Set Resnet to non trainable
-for layer in pretrained.layers:
-  layer.trainable = False
+if load_existing_model:
+  pretrained = load_model(model_path)
+else:
+  pretrained = ResNet50(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
+  #Set Resnet to non trainable
+  for layer in pretrained.layers:
+    layer.trainable = False
 
-#add FCN  
-flattened = layers.Flatten()(pretrained.output)
-add_layer = layers.Dense(2, activation='relu')(flattened)
-add_layer = layers.Dense(64, activation='relu')(add_layer)
-add_layer = layers.Dropout(rate=0.2)(add_layer)
-add_layer = layers.Dense(32, activation='relu')(add_layer)
-output = layers.Dense(classes.shape[1], activation='softmax', name='output')(add_layer)
-pretrained = Model(pretrained.inputs, output)
+  #add FCN  
+  flattened = layers.Flatten()(pretrained.output)
+  add_layer = layers.Dense(2, activation='relu')(flattened)
+  add_layer = layers.Dense(64, activation='relu')(add_layer)
+  add_layer = layers.Dropout(rate=0.2)(add_layer)
+  add_layer = layers.Dense(32, activation='relu')(add_layer)
+  output = layers.Dense(classes.shape[1], activation='softmax', name='output')(add_layer)
+  pretrained = Model(pretrained.inputs, output)
+
+  pretrained.compile(Adam(lr=1e-3), 'categorical_crossentropy', metrics=['acc'])
+
 pretrained.summary()
-
-pretrained.compile(RMSprop(lr=5e-3), 'categorical_crossentropy', metrics=['acc'])\
-
 print('Input shape:', pretrained.input_shape)
 print('Output shape:', pretrained.output_shape)
 
 #--------------- Train Model ---------------
-pretrained.load_weights('./model/model.h5')
-ckpt = ModelCheckpoint('./model/best_model.h5', monitor='val_loss', verbose=0, save_weights_only=True, save_best_only=True)
-es = EarlyStopping(monitor='val_loss', min_delta=0, patience=8, verbose=0, mode='auto', baseline=None, restore_best_weights=True)
-try:
-   pretrained_history = pretrained.fit(images, classes, verbose=1, batch_size=batch_size, epochs=epochs, validation_data=(images_valid, classes_valid), callbacks=[])
-finally:
-   pretrained.save_weights('./model/model.h5') #problem with keras gpu and modelcheckpoint
+if train_model:
+  # ckpt = ModelCheckpoint(model_dir + 'best_model.h5', monitor='val_loss', verbose=0, save_weights_only=True, save_best_only=True)
+  # es = EarlyStopping(monitor='val_loss', min_delta=0, patience=8, verbose=0, mode='auto', baseline=None, restore_best_weights=True)
+  pretrained_history = pretrained.fit(
+    images_train,
+    classes_train,
+    verbose=1, 
+    callbacks=[],
+    epochs=epochs,
+    batch_size=batch_size, 
+    validation_data=(images_valid, classes_valid)
+  )
+  
+  pretrained.save(model_path)
 
 #--------------- Graph results ---------------
-fig, ax = plt.subplots()
-ax.plot(pretrained_history.epoch, pretrained_history.history['val_acc'], label='Pretrained')
-ax.legend()
-ax.set_xlabel('Epoch Number')
-ax.set_ylabel('Accuracy')               
+if graph_results:
+  fig, ax = plt.subplots()
+  ax.plot(pretrained_history.epoch, pretrained_history.history['val_acc'], label='Pretrained')
+  ax.legend()
+  ax.set_xlabel('Epoch Number')
+  ax.set_ylabel('Accuracy')               
 
-#--------------- Test model on new image ---------------
-pretrained.load_weights('./model/model.h5')
-for image in images[1:1000]:
-  print(pretrained.predict(np.expand_dims(image, axis=0)))
+#--------------- Evaluate Model ---------------
+if evaluate:
+  score = pretrained.evaluate(images, classes)
+  print('Metrics', pretrained.metrics_names)
+  print('Score', score)
 
-score = pretrained.evaluate(images, classes)
-print('Score', score)
-
-images = []
-for filename in ['test0', 'test1', 'test2']:
-  image = load_img(f'./{filename}.jpg', target_size=(dim, dim))
-  numpy_image = img_to_array(image)
-  images.append(numpy_image)
-
-for image in images:
-  print(pretrained.predict(np.expand_dims(image, axis=0)))
-# plt.imshow(np.uint8(images_batch[0])) #render an image
-
-
-
+  predictions = pretrained.predict(images)
+  matrix = confusion_matrix(classes.argmax(axis=1), predictions.argmax(axis=1))
+  print('Confusion Matrix')
+  print(matrix)
 
 #--------------- Save Model as Protocol Buffer file ---------------
 from keras import backend as K
@@ -141,10 +154,15 @@ def freeze_session(session, keep_var_names=None, output_names=None, clear_device
                                                       output_names, freeze_var_names)
         return frozen_graph
 
+if save_pb:
+  frozen_graph = freeze_session(K.get_session(),
+    output_names=[out.op.name for out in pretrained.outputs])
 
-# frozen_graph = freeze_session(K.get_session(),
-                              # output_names=[out.op.name for out in pretrained.outputs])
+  # Save to .pb
+  tf.train.write_graph(frozen_graph, model_dir, model_name+'.pb', as_text=False)
 
-# Save to ./model/tf_model.pb
-# pretrained.save_weights('./model/model.h5')
-# tf.train.write_graph(frozen_graph, "model", "tf_model.pb", as_text=False)
+if create_tflite:
+  print('Saving tflite...')
+  converter = tf.lite.TFLiteConverter.from_keras_model(pretrained)
+  tflite_model = converter.convert()
+  open(f'{model_dir}{model_name}.tflite', 'wb').write(tflite_model)

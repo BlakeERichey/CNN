@@ -3,3 +3,5 @@
 
 images/*
 *.h5
+*.pb
+*tflite
