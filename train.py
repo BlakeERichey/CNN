@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics         import confusion_matrix
 from keras import layers
 from keras.utils import to_categorical
-from keras.applications import ResNet50
+from keras.applications import ResNet50, InceptionV3
 from keras.models import Model, load_model
 from keras.optimizers import RMSprop, Adam
 from keras.preprocessing.image import load_img, img_to_array
@@ -21,10 +21,10 @@ dim = 256
 epochs = 200
 batch_size = 4
 model_dir = './model/'
-model_name = 'corn_model'
+model_name = 'Corn_InceptionV3'
 model_path = model_dir+model_name+'.h5' #save model to
 
-load_images         = True #***
+load_images         = False #***
 load_existing_model = False
 train_model         = True
 graph_results       = True
@@ -67,7 +67,7 @@ if load_images:
 if load_existing_model:
   pretrained = load_model(model_path)
 else:
-  pretrained = ResNet50(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
+  pretrained = InceptionV3(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
   #Set Resnet to non trainable
   for layer in pretrained.layers:
     layer.trainable = False
@@ -75,8 +75,8 @@ else:
   #add FCN  
   flattened = layers.Flatten()(pretrained.output)
   add_layer = layers.Dense(2, activation='relu')(flattened)
-  add_layer = layers.Dense(64, activation='relu')(add_layer)
-  add_layer = layers.Dropout(rate=0.2)(add_layer)
+#  add_layer = layers.Dense(64, activation='relu')(add_layer)
+#  add_layer = layers.Dropout(rate=0.2)(add_layer)
   add_layer = layers.Dense(32, activation='relu')(add_layer)
   output = layers.Dense(classes.shape[1], activation='softmax', name='output')(add_layer)
   pretrained = Model(pretrained.inputs, output)
