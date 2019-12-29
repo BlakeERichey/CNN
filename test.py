@@ -29,7 +29,7 @@ def get_images(path='./images/', dims=(256, 256)):
 
 #--------------- Load Model --------------- 
 model_dir = './model/'
-model_name = 'corn_model'
+model_name = 'resnet_corn'
 model_path = model_dir+model_name+'.h5'
 
 pretrained = load_model(model_path)

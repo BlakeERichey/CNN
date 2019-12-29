@@ -67,11 +67,11 @@ if __name__ == '__main__':
     'env': 'corn_env-v0', 
     'elitist': 2,
     'sharpness': 1,
-    'cxtype': 'weave',
-    'population': 25,
+    'cxtype': 'splice',
+    'population': 30,
     'mxrt': 'default',
     'transfer': True,
-    'generations': 20, 
+    'generations': 30, 
     'mx_type': 'default',
     'selection': 'tour',
     'fitness_goal': .99, #*
@@ -80,13 +80,17 @@ if __name__ == '__main__':
     'activation': 'softmax', 
     'nodes_per_layer': [],
   }
+  
+  def checkpoint():
+      if agents.best_fit[1] > .95:
+          agents.save_best(target='./results/checkpoint.h5')
 
   agents = NNEvo(**config)
 
   for env in agents.envs:
     env.reset(images, classes)
 
-  agents.train(target='./results/cornGA.h5', callbacks=[])
+  agents.train(filename='./results/cornGA2.h5', target='./results/cornGA3.h5', callbacks=[checkpoint])
   # agents.evaluate(filename='./results/cornGA_80.0.h5')
   agents.show_plot()
   agents.evaluate()

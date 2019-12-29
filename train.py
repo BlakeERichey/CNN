@@ -21,16 +21,16 @@ dim = 256
 epochs = 200
 batch_size = 4
 model_dir = './model/'
-model_name = 'Corn_InceptionV3'
+model_name = 'resnet_corn'
 model_path = model_dir+model_name+'.h5' #save model to
 
-load_images         = False #***
-load_existing_model = False
+load_images         = True #***
+load_existing_model = True
 train_model         = True
 graph_results       = True
 evaluate            = True
-save_pb             = True
-create_tflite       = True
+save_pb             = False
+create_tflite       = False
 #--------------- Load images ---------------
 if load_images:
   print('Loading Images...')
@@ -67,21 +67,22 @@ if load_images:
 if load_existing_model:
   pretrained = load_model(model_path)
 else:
-  pretrained = InceptionV3(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
+  pretrained = ResNet50(weights='imagenet', include_top=False, input_shape=(dim, dim, 3))
   #Set Resnet to non trainable
-  for layer in pretrained.layers:
-    layer.trainable = False
+  for i, layer in enumerate(pretrained.layers):
+    if i<=45:
+      layer.trainable = False
 
   #add FCN  
   flattened = layers.Flatten()(pretrained.output)
-  add_layer = layers.Dense(2, activation='relu')(flattened)
-#  add_layer = layers.Dense(64, activation='relu')(add_layer)
-#  add_layer = layers.Dropout(rate=0.2)(add_layer)
+  add_layer = layers.Dense(8, activation='relu')(flattened)
+  # add_layer = layers.Dense(64, activation='relu')(add_layer)
   add_layer = layers.Dense(32, activation='relu')(add_layer)
-  output = layers.Dense(classes.shape[1], activation='softmax', name='output')(add_layer)
+  add_layer = layers.Dropout(rate=0.2)(add_layer)
+  output = layers.Dense(classes.shape[1], activation='sigmoid', name='output')(add_layer)
   pretrained = Model(pretrained.inputs, output)
 
-  pretrained.compile(Adam(lr=1e-3), 'categorical_crossentropy', metrics=['acc'])
+  pretrained.compile(Adam(lr=1e-3), 'binary_crossentropy', metrics=['acc'])
 
 pretrained.summary()
 print('Input shape:', pretrained.input_shape)
@@ -90,7 +91,7 @@ print('Output shape:', pretrained.output_shape)
 #--------------- Train Model ---------------
 if train_model:
   # ckpt = ModelCheckpoint(model_dir + 'best_model.h5', monitor='val_loss', verbose=0, save_weights_only=True, save_best_only=True)
-  es = EarlyStopping(monitor='val_acc', min_delta=0, patience=25, verbose=0, mode='auto', baseline=0.85, restore_best_weights=True)
+  es = EarlyStopping(monitor='val_loss', min_delta=0, patience=25, verbose=0, mode='auto', baseline=0.85, restore_best_weights=True)
   pretrained_history = pretrained.fit(
     images_train,
     classes_train,
